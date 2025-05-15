@@ -2,8 +2,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
 using System.Linq;
-using System.Collections;
-using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 
 namespace XRMultiplayer
 {
@@ -12,26 +10,16 @@ namespace XRMultiplayer
         #region Serialized Fields
         [Header("Spawn Points")]
         [SerializeField] private Transform[] spawnPoints;
-        [SerializeField] private bool randomizeSpawnPoints = true;
         
         [Header("References")]
-        [SerializeField] private GameObject xrOrigin;
+        [SerializeField] private CharacterResetter characterResetter;
         #endregion
 
         #region Private Fields
-        private TeleportationProvider teleportationProvider;
-        private List<Transform> availableSpawnPoints = new List<Transform>();
         private Dictionary<ulong, Transform> playerSpawnPoints = new Dictionary<ulong, Transform>();
         #endregion
 
         #region Unity Lifecycle Methods
-        private void Awake()
-        {
-            InitializeSpawnPoints();
-            FindXROriginIfNeeded();
-            GetTeleportationProvider();
-        }
-        
         private void Start()
         {
             RegisterEvents();
@@ -44,48 +32,6 @@ namespace XRMultiplayer
         #endregion
 
         #region Initialization Methods
-        private void InitializeSpawnPoints()
-        {
-            // Initialize available spawn points
-            availableSpawnPoints = new List<Transform>(spawnPoints);
-            
-            if (randomizeSpawnPoints)
-            {
-                // Shuffle the spawn points
-                availableSpawnPoints = availableSpawnPoints.OrderBy(x => Random.value).ToList();
-            }
-        }
-
-        private void FindXROriginIfNeeded()
-        {
-            // Find XR Origin if not assigned
-            if (xrOrigin == null)
-            {
-                xrOrigin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>()?.gameObject;
-                if (xrOrigin != null)
-                {
-                    Debug.Log("Found XR Origin automatically: " + xrOrigin.name);
-                }
-            }
-        }
-
-        private void GetTeleportationProvider()
-        {
-            // Get TeleportationProvider from XR Origin
-            if (xrOrigin != null)
-            {
-                teleportationProvider = xrOrigin.GetComponentInChildren<TeleportationProvider>();
-                if (teleportationProvider != null)
-                {
-                    Debug.Log("Found TeleportationProvider on XR Origin");
-                }
-                else
-                {
-                    Debug.LogWarning("No TeleportationProvider found on XR Origin");
-                }
-            }
-        }
-
         private void RegisterEvents()
         {
             if (XRINetworkGameManager.Instance != null)
@@ -108,6 +54,13 @@ namespace XRMultiplayer
         {
             Debug.Log($"Player {playerId} state changed: {(isConnected ? "Connected" : "Disconnected")}");
             
+            // Only process for our local player
+            if (playerId != NetworkManager.Singleton.LocalClientId)
+            {
+                Debug.Log($"Ignoring player {playerId} as it's not our local player ({NetworkManager.Singleton.LocalClientId})");
+                return;
+            }
+            
             if (isConnected)
             {
                 // Player joined - assign a spawn point
@@ -124,42 +77,68 @@ namespace XRMultiplayer
         #region Spawn Point Management
         private void AssignSpawnPoint(ulong playerId)
         {
-            Debug.Log($"Assigning spawn point for player {playerId}");
+            Debug.Log($"Assigning spawn point for player {playerId} (local player: {NetworkManager.Singleton.LocalClientId})");
             
-            // Make sure we have spawn points available
-            if (availableSpawnPoints.Count == 0)
+            // Make sure we have at least 2 spawn points
+            if (spawnPoints.Length < 2)
             {
-                Debug.LogWarning("No available spawn points for player: " + playerId);
+                Debug.LogError("At least 2 spawn points are required for server/client distinction.");
                 return;
             }
             
-            // Get the first available spawn point
-            Transform spawnPoint = availableSpawnPoints[0];
-            availableSpawnPoints.RemoveAt(0);
+            // Determine if this player is the server
+            bool isServerPlayer = playerId == NetworkManager.ServerClientId;
+            
+            // Get the appropriate spawn point - index 0 for server, index 1 for client
+            Transform spawnPoint = isServerPlayer ? spawnPoints[0] : spawnPoints[1];
+            
+            // Add to player spawn points dictionary
             playerSpawnPoints[playerId] = spawnPoint;
             
-            // Move the player to the spawn point
-            if (XRINetworkGameManager.Instance.GetPlayerByID(playerId, out XRINetworkPlayer player))
+            Debug.Log($"Player {playerId} is {(isServerPlayer ? "SERVER" : "CLIENT")} - spawning at {(isServerPlayer ? "spawn point 1" : "spawn point 2")}");
+            
+            // Find the character resetter if not assigned
+            if (characterResetter == null)
             {
-                Debug.Log($"Teleporting player {playerId} to spawn point at {spawnPoint.position}");
-                TeleportPlayerToSpawnPoint(player, spawnPoint);
-                
-                // Check position after teleport
-                StartCoroutine(VerifyPlayerPosition(player, spawnPoint));
+                if (XRINetworkGameManager.Instance.GetPlayerByID(playerId, out XRINetworkPlayer player))
+                {
+                    characterResetter = player.GetComponentInChildren<CharacterResetter>();
+                    if (characterResetter == null)
+                    {
+                        Debug.LogError("CharacterResetter not found on player");
+                        return;
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"Could not find player object for ID {playerId}");
+                    return;
+                }
+            }
+            
+            // Configure the CharacterResetter based on whether this is server or client
+            if (isServerPlayer)
+            {
+                // Server configuration
+                characterResetter.SetOnlinePosition(spawnPoint.position);
+                characterResetter.SetResetDistance(150f);
+                Debug.Log("Configured CharacterResetter for SERVER player");
             }
             else
             {
-                Debug.LogWarning($"Could not find player object for ID {playerId}");
+                // Client configuration
+                characterResetter.SetOnlinePosition(spawnPoint.position);
+                characterResetter.SetResetDistance(200f);
+                Debug.Log("Configured CharacterResetter for CLIENT player");
             }
+            
+            // Reset the player to apply new settings
+            characterResetter.ResetPlayer();
         }
         
         private void ReleaseSpawnPoint(ulong playerId)
         {
-            if (playerSpawnPoints.TryGetValue(playerId, out Transform spawnPoint))
-            {
-                availableSpawnPoints.Add(spawnPoint);
-                playerSpawnPoints.Remove(playerId);
-            }
+            playerSpawnPoints.Remove(playerId);
         }
         
         /// <summary>
@@ -167,79 +146,21 @@ namespace XRMultiplayer
         /// </summary>
         public void RespawnPlayer(ulong playerId)
         {
-            if (playerSpawnPoints.TryGetValue(playerId, out Transform spawnPoint) &&
-                XRINetworkGameManager.Instance.GetPlayerByID(playerId, out XRINetworkPlayer player))
+            // Only respawn if it's our local player
+            if (playerId != NetworkManager.Singleton.LocalClientId)
             {
-                TeleportPlayerToSpawnPoint(player, spawnPoint);
-            }
-        }
-        #endregion
-
-        #region Teleportation
-        private void TeleportPlayerToSpawnPoint(XRINetworkPlayer player, Transform spawnPoint)
-        {
-            Debug.Log($"Attempting to teleport player to {spawnPoint.position}");
-            
-            // Use XR Origin's TeleportationProvider if available
-            if (teleportationProvider != null)
-            {
-                Debug.Log("Using XR Origin's TeleportationProvider for teleportation");
-                
-                TeleportRequest teleportRequest = new TeleportRequest
-                {
-                    destinationPosition = spawnPoint.position,
-                    destinationRotation = spawnPoint.rotation
-                };
-                
-                if (!teleportationProvider.QueueTeleportRequest(teleportRequest))
-                {
-                    Debug.LogError("Failed to queue teleport request through XR Origin");
-                    // Fall back to direct positioning as a last resort
-                    player.transform.position = spawnPoint.position;
-                    player.transform.rotation = spawnPoint.rotation;
-                }
                 return;
             }
             
-            // Fallback to player's TeleportationProvider if XR Origin's is not available
-            TeleportationProvider playerTeleportProvider = player.GetComponentInChildren<TeleportationProvider>();
-            
-            if (playerTeleportProvider != null)
+            if (playerSpawnPoints.TryGetValue(playerId, out Transform spawnPoint) &&
+                XRINetworkGameManager.Instance.GetPlayerByID(playerId, out XRINetworkPlayer player))
             {
-                Debug.Log($"Found TeleportationProvider on player - teleporting via request");
-                
-                TeleportRequest teleportRequest = new TeleportRequest
+                CharacterResetter resetter = player.GetComponentInChildren<CharacterResetter>();
+                if (resetter != null)
                 {
-                    destinationPosition = spawnPoint.position,
-                    destinationRotation = spawnPoint.rotation
-                };
-                
-                if (!playerTeleportProvider.QueueTeleportRequest(teleportRequest))
-                {
-                    Debug.LogError($"Failed to queue teleport request for player {player.name}");
-                    player.transform.position = spawnPoint.position;
-                    player.transform.rotation = spawnPoint.rotation;
+                    resetter.ResetPlayer();
                 }
             }
-            else
-            {
-                Debug.LogWarning($"No TeleportationProvider found - direct positioning");
-                player.transform.position = spawnPoint.position;
-                player.transform.rotation = spawnPoint.rotation;
-            }
-        }
-        
-        private IEnumerator VerifyPlayerPosition(XRINetworkPlayer player, Transform spawnPoint)
-        {
-            yield return null;
-            Debug.Log($"Player position after teleport: {player.transform.position}, expected: {spawnPoint.position}");
-            
-            // Force position again after a frame
-            player.transform.position = spawnPoint.position;
-            player.transform.rotation = spawnPoint.rotation;
-            
-            yield return new WaitForSeconds(0.5f);
-            Debug.Log($"Player position after delay: {player.transform.position}");
         }
         #endregion
     }

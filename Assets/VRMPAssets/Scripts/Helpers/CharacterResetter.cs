@@ -11,6 +11,7 @@ namespace XRMultiplayer
         [SerializeField] Vector3 onlinePosition = new Vector3(0, .15f, 0);
         TeleportationProvider m_TeleportationProvider;
         Vector3 m_ResetPosition;
+
         private void Start()
         {
             XRINetworkGameManager.Connected.Subscribe(UpdateResetPosition);
@@ -48,6 +49,20 @@ namespace XRMultiplayer
             {
                 ResetPlayer();
             }
+        }
+
+        public void SetOnlinePosition(Vector3 position)
+        {
+            onlinePosition = position;
+            if (XRINetworkGameManager.Connected.Value)
+            {
+                m_ResetPosition = onlinePosition;
+            }
+        }
+
+        public void SetResetDistance(float distance)
+        {
+            m_ResetDistance = distance;
         }
 
         public void ResetPlayer()
