@@ -14,9 +14,28 @@ public class p1Controller : MonoBehaviour
     private int[] correctOrder = { 3, 0, 2, 1 }; // The correct order of button presses
     private List<int> playerOrder = new List<int>(); // The order the player pressed the buttons
     public Collider currentCollider;
+    
+    // Track which buttons have been pressed
+    private bool[] buttonPressed;
+
+    private void Start()
+    {
+        // Initialize the button pressed array based on the number of button animators
+        buttonPressed = new bool[buttonAnimators.Length];
+    }
 
     public void ButtonPress(int buttonIndex)
     {
+        // Check if the button has already been pressed
+        if (buttonPressed[buttonIndex])
+        {
+            // Button is already pressed, do nothing
+            return;
+        }
+
+        // Mark button as pressed
+        buttonPressed[buttonIndex] = true;
+        
         buttonAnimators[buttonIndex].SetTrigger("Press");
         playerOrder.Add(buttonIndex);
 
@@ -45,6 +64,12 @@ public class p1Controller : MonoBehaviour
         foreach (Animator animator in buttonAnimators)
         {
             animator.SetTrigger("Reset");
+        }
+
+        // Reset the button pressed states
+        for (int i = 0; i < buttonPressed.Length; i++)
+        {
+            buttonPressed[i] = false;
         }
 
         playerOrder.Clear();

@@ -53,12 +53,10 @@ public class p1Buttons : MonoBehaviour
 
     public void OnButtonPressed()
     {
-        if (puzzleController.currentCollider == GetComponent<Collider>())
-        {
-            puzzleController.ButtonPress(buttonIndex);
-            puzzleController.currentCollider = null;
-            puzzleController.interactText.SetActive(false);
-            interactable = false;
-        }
+        Debug.Log("Button " + buttonIndex + " pressed");
+        puzzleController.ButtonPress(buttonIndex);
+        puzzleController.currentCollider = null;
+        puzzleController.interactText.SetActive(false);
+        interactable = false;
     }
 }
