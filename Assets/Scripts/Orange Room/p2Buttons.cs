@@ -54,8 +54,8 @@ public class p2Buttons : MonoBehaviour
 
     public void OnButtonPressed()
     {
-        if (puzzleController.currentCollider == GetComponent<Collider>())
-        {
+        // if (puzzleController.currentCollider == GetComponent<Collider>())
+        // {
             startNumber++;
             if (startNumber > 7)
             {
@@ -66,7 +66,7 @@ public class p2Buttons : MonoBehaviour
             puzzleController.currentCollider = null;
             puzzleController.interactText.SetActive(false);
             interactable = false;
-        }
+        // }
     }
 
     private void UpdateButtonText()

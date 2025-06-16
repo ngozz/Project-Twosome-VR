@@ -9,6 +9,7 @@ public class Tween : MonoBehaviour
     [SerializeField] private RectTransform pressStart;
     [SerializeField] private RectTransform menuButtonPanel;
     [SerializeField] private RectTransform playButtonPanel;
+    [SerializeField] private RectTransform menuButton;
     private TextMeshProUGUI pressStartText;
 
     // Wall-mounted positions (wall at X=-7.51, Y=0-5, Z=-7.5 to 7.5)

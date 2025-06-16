@@ -9,6 +9,10 @@ public class p1Controller : MonoBehaviour
     private Animator doorAnimator; // Assign your door animator in the inspector
     [SerializeField]
     public GameObject interactText; // The text that shows when the player can interact
+    [SerializeField]
+    private AudioSource buttonPressSound; // The sound to play when a button is pressed
+    [SerializeField]
+    private AudioSource doorOpenSound; // The sound to play when the door opens
 
     [SerializeField]
     private int[] correctOrder = { 3, 0, 2, 1 }; // The correct order of button presses
@@ -37,6 +41,7 @@ public class p1Controller : MonoBehaviour
         buttonPressed[buttonIndex] = true;
         
         buttonAnimators[buttonIndex].SetTrigger("Press");
+        buttonPressSound.Play();
         playerOrder.Add(buttonIndex);
 
         if (playerOrder.Count == 4)
@@ -78,5 +83,6 @@ public class p1Controller : MonoBehaviour
     private void OpenDoor()
     {
         doorAnimator.SetTrigger("Open");
+        doorOpenSound.Play();
     }
 }
